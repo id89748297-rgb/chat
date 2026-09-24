@@ -198,30 +198,12 @@ const chatActive = () => {
 const page = document.getElementById('page-team-chat');
 return !!(page && page.classList.contains('active'));
 };
-// Ручное сжатие страницы под клавиатуру нужно только iOS (Safari не сжимает окно сам).
-// На Android Chrome окно сжимается само (interactive-widget=resizes-content + 100dvh) —
-// любые ручные прыжки высоты дают «прыжок шапки», поэтому там ничего не делаем.
-const isIOSLike = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
-|| (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-window.__chatIsIOSLike = isIOSLike;
-// Сжатие страницы в момент касания — ДО того, как браузер решит прокрутить страницу к полю.
-// Работает по достоверной сохранённой высоте клавиатуры; без догадок (догадка = прыжок шапки).
-const preshrink = () => {
-if (!chatActive() || __vvMaxH <= 0) return;
-let lastKb = parseInt(localStorage.getItem('clc_kb_height') || '0');
-if (!lastKb || lastKb < 100 || lastKb > __vvMaxH * 0.7) return; // нет надёжных данных — не сжимаем
-const page = document.getElementById('page-team-chat');
-page.style.setProperty('height', (__vvMaxH - lastKb) + 'px', 'important');
-setTimeout(() => {
-if (chatActive() && !__kbOpen && document.activeElement !== input) {
-page.style.removeProperty('height');
-page.style.removeProperty('top');
-}
-}, 800);
-};
-['pointerdown', 'touchstart'].forEach(ev => {
-input.addEventListener(ev, preshrink, { passive: true });
-});
+// === НОВЫЙ ПОДХОД: страница следует за видимой областью каждый кадр ===
+// Никаких догадок и пред-сжатий: на каждое событие visualViewport (а во время
+// анимации клавиатуры они летят потоком) страница мгновенно подгоняется под
+// видимую область. Шапка приклеена к верху видимой зоны в каждый момент времени,
+// поэтому «просесть и вскинуться» ей физически неоткуда.
+const preshrink = () => {};
 // Запрет нативного scroll-into-view: на касании поле «замораживается» (readonly),
 // браузер не скроллит документ к фокусу; фокус ставим сами после своих коррекций.
 input.addEventListener('touchstart', () => {
@@ -229,27 +211,15 @@ if (chatActive()) input.setAttribute('readonly', 'readonly');
 }, { passive: true });
 input.addEventListener('touchend', () => {
 if (!chatActive()) return;
-window.scrollTo(0, 0);
 setTimeout(() => {
 if (!chatActive()) return;
 input.removeAttribute('readonly');
 input.focus();
 }, 0);
 }, false);
-input.addEventListener('focusin', () => {
-if (chatActive()) window.scrollTo(0, 0);
-});
-window.addEventListener('scroll', () => {
-if (chatActive() && window.scrollY !== 0) window.scrollTo(0, 0);
-}, true);
-// Одного вызова достаточно: дальше visualViewport.resize сам позовёт коррекцию,
-// когда клавиатура реально появится (повторы на 100/300/600мс давали поздние дёргания)
 input.addEventListener('focus', () => {
-if (chatActive()) { window.scrollTo(0, 0); adjustChatForKeyboard(); }
+if (chatActive()) adjustChatForKeyboard();
 });
-input.addEventListener('blur', () => setTimeout(() => {
-if (chatActive()) window.scrollTo(0, 0);
-}, 100));
 }
 function setupChatSwipeBack() {
 if (window.__chatSwipeBackBound) return;
@@ -292,17 +262,16 @@ const kbOpen = kb > 150;
 document.getElementById('chat-input-bar').classList.toggle('kb-open', kbOpen);
 // Сжимает ли браузер само окно (interactive-widget=resizes-content, Chrome Android)?
 // Если да — страница уже правильной высоты (100dvh), руками ничего не делаем.
-// Если нет (iOS Safari, встроенные браузеры, WebView) — клавиатура наезжает поверх,
-// и страницу надо сжать самой, иначе браузер прокручивает её к полю ввода (прыжок шапки).
 const layoutShrunk = (__vvMaxH - window.innerHeight) > 150;
 if (kbOpen && !layoutShrunk) {
 __kbOpen = true;
 try { localStorage.setItem('clc_kb_height', String(kb)); } catch {}
-// Шапка всегда прижата к верху: смещение vv.offsetTop не применяем —
-// в момент открытия клавиатуры браузер на миг прокручивает страницу вниз,
-// и использование offsetTop опускало шапку, а затем она резко вскакивала.
+// Следим за видимой областью КАЖДЫЙ кадр (мы подписаны и на resize, и на scroll
+// визуального окна): страница точно накрывает то, что видно на экране сейчас.
+// Никаких scrollTo и «нулевых» позиций — страница просто едет вместе с окном,
+// поэтому шапке неоткуда прыгнуть: она приклеена к текущему верху видимой зоны.
 page.style.setProperty('height', vh + 'px', 'important');
-window.scrollTo(0, 0);
+page.style.setProperty('top', vv.offsetTop + 'px', 'important');
 } else {
 __kbOpen = false;
 page.style.removeProperty('height');
