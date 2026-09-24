@@ -266,12 +266,12 @@ const layoutShrunk = (__vvMaxH - window.innerHeight) > 150;
 if (kbOpen && !layoutShrunk) {
 __kbOpen = true;
 try { localStorage.setItem('clc_kb_height', String(kb)); } catch {}
-// Следим за видимой областью КАЖДЫЙ кадр (мы подписаны и на resize, и на scroll
-// визуального окна): страница точно накрывает то, что видно на экране сейчас.
-// Никаких scrollTo и «нулевых» позиций — страница просто едет вместе с окном,
-// поэтому шапке неоткуда прыгнуть: она приклеена к текущему верху видимой зоны.
+// Следим за видимой областью КАЖДЫЙ кадр. Браузеры прячут панораму к полю ввода
+// по-разному: кто-то в visualViewport.offsetTop, кто-то в window.scrollY —
+// компенсируем СУММУ обоих, чтобы шапка оставалась на видимой верхушке всегда.
+const pan = Math.max(0, Math.round((vv.offsetTop || 0) + (window.scrollY || window.pageYOffset || 0)));
 page.style.setProperty('height', vh + 'px', 'important');
-page.style.setProperty('top', vv.offsetTop + 'px', 'important');
+page.style.setProperty('top', pan + 'px', 'important');
 } else {
 __kbOpen = false;
 page.style.removeProperty('height');
