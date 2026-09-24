@@ -89,10 +89,8 @@ function cancelTeamPress() { clearTimeout(window.__teamPressTimer); }
 // === БЛОКИРОВКА ПРОКРУТКИ СТРАНИЦЫ ПОД ЧАТОМ ===
 function lockBodyScroll() {
 window.__bodyScrollY = window.scrollY || window.pageYOffset || 0;
-// Чат — полноэкранная страница: тело прижимаем к нулю, а не к -scrollY.
-// Смещение на прокрученную позицию в части браузеров сдвигало шапку чата при открытии клавиатуры.
 document.body.style.position = 'fixed';
-document.body.style.top = '0px';
+document.body.style.top = '-' + window.__bodyScrollY + 'px';
 document.body.style.left = '0';
 document.body.style.right = '0';
 document.body.style.width = '100%';
@@ -195,9 +193,43 @@ const chatActive = () => {
 const page = document.getElementById('page-team-chat');
 return !!(page && page.classList.contains('active'));
 };
+// Сжатие страницы под клавиатуру в момент касания — ДО того, как iOS решит прокручивать
+const preshrink = () => {
+if (!chatActive() || __vvMaxH <= 0) return;
+let lastKb = parseInt(localStorage.getItem('clc_kb_height_v2') || '0');
+if (!lastKb || lastKb < 100 || lastKb > __vvMaxH * 0.7) lastKb = Math.round(__vvMaxH * 0.42);
+const page = document.getElementById('page-team-chat');
+page.style.setProperty('height', (__vvMaxH - lastKb) + 'px', 'important');
+setTimeout(() => {
+if (chatActive() && !__kbOpen && document.activeElement !== input) {
+page.style.removeProperty('height');
+page.style.removeProperty('top');
+}
+}, 800);
+};
+['pointerdown', 'touchstart'].forEach(ev => {
+input.addEventListener(ev, preshrink, { passive: true });
+});
+// Конец тапа: ручной фокус-страховка (без preventDefault — жест «настоящий»)
+input.addEventListener('touchend', () => {
+if (!chatActive()) return;
+window.scrollTo(0, 0);
+input.focus();
+}, false);
+input.addEventListener('focusin', () => {
+if (chatActive()) window.scrollTo(0, 0);
+});
 window.addEventListener('scroll', () => {
 if (chatActive() && window.scrollY !== 0) window.scrollTo(0, 0);
 }, true);
+input.addEventListener('focus', () => {
+[0, 100, 300, 600].forEach(ms => setTimeout(() => {
+if (chatActive()) { window.scrollTo(0, 0); adjustChatForKeyboard(); }
+}, ms));
+});
+input.addEventListener('blur', () => setTimeout(() => {
+if (chatActive()) window.scrollTo(0, 0);
+}, 100));
 }
 function setupChatSwipeBack() {
 if (window.__chatSwipeBackBound) return;
@@ -223,36 +255,32 @@ if (dx > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) closeTeamChat();
 function setupChatKeyboardHandling() {
 if (!window.visualViewport || window.__chatKeyboardHandlerBound) return;
 window.__chatKeyboardHandlerBound = true;
-window.visualViewport.addEventListener('resize', requestChatViewportSync);
-window.visualViewport.addEventListener('scroll', requestChatViewportSync);
+window.visualViewport.addEventListener('resize', adjustChatForKeyboard);
+window.visualViewport.addEventListener('scroll', adjustChatForKeyboard);
 }
 let __chatKBLast = -1;
-let __vvRafPending = false;
-// ВАЖНО: здесь мы больше НЕ трогаем page.style.top/height руками.
-// На iPhone в режиме standalone PWA (WKWebView) любая попытка JS подстроить
-// позицию/высоту страницы под клавиатуру гарантированно опаздывает на кадр-два
-// относительно нативной анимации системы — отсюда видимый рывок шапки.
-// Вместо борьбы со встроенным поведением просто доверяем его браузеру:
-// .chat-page-header теперь position:sticky и едет вместе с обычным скроллом/
-// сжатием документа, которое делает сам WKWebView/interactive-widget=resizes-content.
-// Тут только пересчитываем факт "открыта клавиатура" (для стилей) и держим низ списка.
-function requestChatViewportSync() {
-if (__vvRafPending) return;
-__vvRafPending = true;
-requestAnimationFrame(syncChatViewport);
-}
-function syncChatViewport() {
-__vvRafPending = false;
+let __vvMaxH = 0; // запоминаем высоту экрана БЕЗ клавиатуры
+let __kbOpen = false;
+function adjustChatForKeyboard() {
 const page = document.getElementById('page-team-chat');
 if (!page || !page.classList.contains('active') || !window.visualViewport) return;
 const vv = window.visualViewport;
-const h = Math.round(vv.height);
-const kbOpen = (window.innerHeight - h) > 100;
-document.getElementById('chat-input-bar').classList.toggle('kb-open', kbOpen);
-if (h !== __chatKBLast) { __chatKBLast = h; scrollChatToBottom(); }
+const vh = Math.round(vv.height);
+if (vh > __vvMaxH) __vvMaxH = vh;
+const kb = __vvMaxH > 0 ? (__vvMaxH - vh) : 0;
+if (kb > 150) {
+__kbOpen = true;
+try { localStorage.setItem('clc_kb_height_v2', String(kb)); } catch {}
+page.style.setProperty('height', vh + 'px', 'important');
+page.style.setProperty('top', vv.offsetTop + 'px', 'important');
+window.scrollTo(0, 0);
+} else {
+__kbOpen = false;
+page.style.removeProperty('height');
+page.style.removeProperty('top');
 }
-// Оставляем старое имя как алиас — на него ссылаются другие места кода.
-function adjustChatForKeyboard() { requestChatViewportSync(); }
+if (kb !== __chatKBLast) { __chatKBLast = kb; scrollChatToBottom(); }
+}
 function autoGrowChatInput(el) {
 el.style.setProperty('height', 'auto', 'important');
 const newHeight = Math.min(el.scrollHeight, 98);
