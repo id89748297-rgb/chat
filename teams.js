@@ -199,10 +199,10 @@ return !!(page && page.classList.contains('active'));
 const isIOSLike = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
 || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 window.__chatIsIOSLike = isIOSLike;
-// Сжатие страницы в момент касания — ДО того, как iOS начнёт прокручивать.
-// Только по достоверной сохранённой высоте клавиатуры; без догадок (догадка = прыжок шапки).
+// Сжатие страницы в момент касания — ДО того, как браузер решит прокрутить страницу к полю.
+// Работает по достоверной сохранённой высоте клавиатуры; без догадок (догадка = прыжок шапки).
 const preshrink = () => {
-if (!chatActive() || !isIOSLike() || __vvMaxH <= 0) return;
+if (!chatActive() || __vvMaxH <= 0) return;
 let lastKb = parseInt(localStorage.getItem('clc_kb_height') || '0');
 if (!lastKb || lastKb < 100 || lastKb > __vvMaxH * 0.7) return; // нет надёжных данных — не сжимаем
 const page = document.getElementById('page-team-chat');
@@ -271,21 +271,18 @@ let __kbOpen = false;
 function adjustChatForKeyboard() {
 const page = document.getElementById('page-team-chat');
 if (!page || !page.classList.contains('active') || !window.visualViewport) return;
-// Android: окно сжимает сам браузер (dvh), ручная установка высоты даёт прыжок шапки.
-// Только придерживаем низ списка, если пользователь был у последнего сообщения.
-if (window.__chatIsIOSLike && !window.__chatIsIOSLike()) {
-const list = document.getElementById('chat-messages-list');
-const vhA = Math.round(window.visualViewport.height);
-const kbAndroid = __vvMaxH > 0 ? (__vvMaxH - vhA) : 0;
-document.getElementById('chat-input-bar').classList.toggle('kb-open', kbAndroid > 150);
-if (list && list.scrollHeight - list.scrollTop - list.clientHeight < 120) scrollChatToBottom();
-return;
-}
 const vv = window.visualViewport;
 const vh = Math.round(vv.height);
 if (vh > __vvMaxH) __vvMaxH = vh;
 const kb = __vvMaxH > 0 ? (__vvMaxH - vh) : 0;
-if (kb > 150) {
+const kbOpen = kb > 150;
+document.getElementById('chat-input-bar').classList.toggle('kb-open', kbOpen);
+// Сжимает ли браузер само окно (interactive-widget=resizes-content, Chrome Android)?
+// Если да — страница уже правильной высоты (100dvh), руками ничего не делаем.
+// Если нет (iOS Safari, встроенные браузеры, WebView) — клавиатура наезжает поверх,
+// и страницу надо сжать самой, иначе браузер прокручивает её к полю ввода (прыжок шапки).
+const layoutShrunk = (__vvMaxH - window.innerHeight) > 150;
+if (kbOpen && !layoutShrunk) {
 __kbOpen = true;
 try { localStorage.setItem('clc_kb_height', String(kb)); } catch {}
 page.style.setProperty('height', vh + 'px', 'important');
@@ -296,7 +293,6 @@ __kbOpen = false;
 page.style.removeProperty('height');
 page.style.removeProperty('top');
 }
-document.getElementById('chat-input-bar').classList.toggle('kb-open', kb > 150);
 if (kb !== __chatKBLast) { __chatKBLast = kb; scrollChatToBottom(); }
 }
 function autoGrowChatInput(el) {
