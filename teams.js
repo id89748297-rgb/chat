@@ -271,6 +271,16 @@ let __kbOpen = false;
 function adjustChatForKeyboard() {
 const page = document.getElementById('page-team-chat');
 if (!page || !page.classList.contains('active') || !window.visualViewport) return;
+// Android: окно сжимает сам браузер (dvh), ручная установка высоты даёт прыжок шапки.
+// Только придерживаем низ списка, если пользователь был у последнего сообщения.
+if (window.__chatIsIOSLike && !window.__chatIsIOSLike()) {
+const list = document.getElementById('chat-messages-list');
+const vhA = Math.round(window.visualViewport.height);
+const kbAndroid = __vvMaxH > 0 ? (__vvMaxH - vhA) : 0;
+document.getElementById('chat-input-bar').classList.toggle('kb-open', kbAndroid > 150);
+if (list && list.scrollHeight - list.scrollTop - list.clientHeight < 120) scrollChatToBottom();
+return;
+}
 const vv = window.visualViewport;
 const vh = Math.round(vv.height);
 if (vh > __vvMaxH) __vvMaxH = vh;
@@ -286,6 +296,7 @@ __kbOpen = false;
 page.style.removeProperty('height');
 page.style.removeProperty('top');
 }
+document.getElementById('chat-input-bar').classList.toggle('kb-open', kb > 150);
 if (kb !== __chatKBLast) { __chatKBLast = kb; scrollChatToBottom(); }
 }
 function autoGrowChatInput(el) {
