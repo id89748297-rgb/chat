@@ -89,8 +89,10 @@ function cancelTeamPress() { clearTimeout(window.__teamPressTimer); }
 // === БЛОКИРОВКА ПРОКРУТКИ СТРАНИЦЫ ПОД ЧАТОМ ===
 function lockBodyScroll() {
 window.__bodyScrollY = window.scrollY || window.pageYOffset || 0;
+// Чат — полноэкранная страница: тело прижимаем к нулю, а не к -scrollY.
+// Смещение на прокрученную позицию в части браузеров сдвигало шапку чата при открытии клавиатуры.
 document.body.style.position = 'fixed';
-document.body.style.top = '-' + window.__bodyScrollY + 'px';
+document.body.style.top = '0px';
 document.body.style.left = '0';
 document.body.style.right = '0';
 document.body.style.width = '100%';
