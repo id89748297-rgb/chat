@@ -193,11 +193,18 @@ const chatActive = () => {
 const page = document.getElementById('page-team-chat');
 return !!(page && page.classList.contains('active'));
 };
-// Сжатие страницы под клавиатуру в момент касания — ДО того, как iOS решит прокручивать
+// Ручное сжатие страницы под клавиатуру нужно только iOS (Safari не сжимает окно сам).
+// На Android Chrome окно сжимается само (interactive-widget=resizes-content + 100dvh) —
+// любые ручные прыжки высоты дают «прыжок шапки», поэтому там ничего не делаем.
+const isIOSLike = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
+|| (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+window.__chatIsIOSLike = isIOSLike;
+// Сжатие страницы в момент касания — ДО того, как iOS начнёт прокручивать.
+// Только по достоверной сохранённой высоте клавиатуры; без догадок (догадка = прыжок шапки).
 const preshrink = () => {
-if (!chatActive() || __vvMaxH <= 0) return;
+if (!chatActive() || !isIOSLike() || __vvMaxH <= 0) return;
 let lastKb = parseInt(localStorage.getItem('clc_kb_height') || '0');
-if (!lastKb || lastKb < 100 || lastKb > __vvMaxH * 0.7) lastKb = Math.round(__vvMaxH * 0.42);
+if (!lastKb || lastKb < 100 || lastKb > __vvMaxH * 0.7) return; // нет надёжных данных — не сжимаем
 const page = document.getElementById('page-team-chat');
 page.style.setProperty('height', (__vvMaxH - lastKb) + 'px', 'important');
 setTimeout(() => {
