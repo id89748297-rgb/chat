@@ -634,9 +634,8 @@ padding-top: calc(10px + env(safe-area-inset-top));
 background: #121212; border-bottom:1px solid rgba(255,255,255,0.08);
 }
 body.light .chat-page-header { background: #F5F5DC; }
-#chat-input-bar { flex-shrink: 0; background: #121212; padding-bottom: env(safe-area-inset-bottom); }
+#chat-input-bar { flex-shrink: 0; background: #121212; padding-bottom: 0; }
 body.light #chat-input-bar { background: #F5F5DC; }
-#chat-input-bar.kb-open { padding-bottom: 0 !important; }
 /* Кнопка «вниз» в чате */
 #chat-scroll-down {
 position: absolute;
