@@ -96,8 +96,6 @@ document.body.style.top = '0px';
 document.body.style.left = '0';
 document.body.style.right = '0';
 document.body.style.width = '100%';
-// И <html> запрещаем скролл — документу физически нечем двигаться при фокусе на поле
-document.documentElement.style.overflow = 'hidden';
 }
 function unlockBodyScroll() {
 document.body.style.position = '';
@@ -105,7 +103,6 @@ document.body.style.top = '';
 document.body.style.left = '';
 document.body.style.right = '';
 document.body.style.width = '';
-document.documentElement.style.overflow = '';
 window.scrollTo(0, window.__bodyScrollY || 0);
 }
 
@@ -198,28 +195,9 @@ const chatActive = () => {
 const page = document.getElementById('page-team-chat');
 return !!(page && page.classList.contains('active'));
 };
-// === НОВЫЙ ПОДХОД: страница следует за видимой областью каждый кадр ===
-// Никаких догадок и пред-сжатий: на каждое событие visualViewport (а во время
-// анимации клавиатуры они летят потоком) страница мгновенно подгоняется под
-// видимую область. Шапка приклеена к верху видимой зоны в каждый момент времени,
-// поэтому «просесть и вскинуться» ей физически неоткуда.
-const preshrink = () => {};
-// Запрет нативного scroll-into-view: на касании поле «замораживается» (readonly),
-// браузер не скроллит документ к фокусу; фокус ставим сами после своих коррекций.
-input.addEventListener('touchstart', () => {
-if (chatActive()) input.setAttribute('readonly', 'readonly');
-}, { passive: true });
-input.addEventListener('touchend', () => {
-if (!chatActive()) return;
-setTimeout(() => {
-if (!chatActive()) return;
-input.removeAttribute('readonly');
-input.focus();
-}, 0);
-}, false);
-input.addEventListener('focus', () => {
-if (chatActive()) adjustChatForKeyboard();
-});
+window.addEventListener('scroll', () => {
+if (chatActive() && window.scrollY !== 0) window.scrollTo(0, 0);
+}, true);
 }
 function setupChatSwipeBack() {
 if (window.__chatSwipeBackBound) return;
@@ -245,40 +223,34 @@ if (dx > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) closeTeamChat();
 function setupChatKeyboardHandling() {
 if (!window.visualViewport || window.__chatKeyboardHandlerBound) return;
 window.__chatKeyboardHandlerBound = true;
-window.visualViewport.addEventListener('resize', adjustChatForKeyboard);
-window.visualViewport.addEventListener('scroll', adjustChatForKeyboard);
+window.visualViewport.addEventListener('resize', requestChatViewportSync);
+window.visualViewport.addEventListener('scroll', requestChatViewportSync);
 }
 let __chatKBLast = -1;
-let __vvMaxH = 0; // запоминаем высоту экрана БЕЗ клавиатуры
-let __kbOpen = false;
-function adjustChatForKeyboard() {
+let __vvRafPending = false;
+// Непрерывная синхронизация вместо порога "клавиатура открыта/закрыта" с задержками:
+// на КАЖДОЕ событие visualViewport (а их много за время анимации клавиатуры)
+// подгоняем top/height страницы под текущие vv.offsetTop/vv.height.
+// Шапка едет вместе с клавиатурой плавно, а не прыгает постфактум.
+function requestChatViewportSync() {
+if (__vvRafPending) return;
+__vvRafPending = true;
+requestAnimationFrame(syncChatViewport);
+}
+function syncChatViewport() {
+__vvRafPending = false;
 const page = document.getElementById('page-team-chat');
 if (!page || !page.classList.contains('active') || !window.visualViewport) return;
 const vv = window.visualViewport;
-const vh = Math.round(vv.height);
-if (vh > __vvMaxH) __vvMaxH = vh;
-const kb = __vvMaxH > 0 ? (__vvMaxH - vh) : 0;
-const kbOpen = kb > 150;
-document.getElementById('chat-input-bar').classList.toggle('kb-open', kbOpen);
-// Сжимает ли браузер само окно (interactive-widget=resizes-content, Chrome Android)?
-// Если да — страница уже правильной высоты (100dvh), руками ничего не делаем.
-const layoutShrunk = (__vvMaxH - window.innerHeight) > 150;
-if (kbOpen && !layoutShrunk) {
-__kbOpen = true;
-try { localStorage.setItem('clc_kb_height', String(kb)); } catch {}
-// Следим за видимой областью КАЖДЫЙ кадр. Браузеры прячут панораму к полю ввода
-// по-разному: кто-то в visualViewport.offsetTop, кто-то в window.scrollY —
-// компенсируем СУММУ обоих, чтобы шапка оставалась на видимой верхушке всегда.
-const pan = Math.max(0, Math.round((vv.offsetTop || 0) + (window.scrollY || window.pageYOffset || 0)));
-page.style.setProperty('height', vh + 'px', 'important');
-page.style.setProperty('top', pan + 'px', 'important');
-} else {
-__kbOpen = false;
-page.style.removeProperty('height');
-page.style.removeProperty('top');
+const top = Math.round(vv.offsetTop);
+const h = Math.round(vv.height);
+page.style.setProperty('top', top + 'px', 'important');
+page.style.setProperty('height', h + 'px', 'important');
+document.getElementById('chat-input-bar').classList.toggle('kb-open', (window.innerHeight - h - top) > 100);
+if (h !== __chatKBLast) { __chatKBLast = h; scrollChatToBottom(); }
 }
-if (kb !== __chatKBLast) { __chatKBLast = kb; scrollChatToBottom(); }
-}
+// Оставляем старое имя как алиас — на него ссылаются другие места кода.
+function adjustChatForKeyboard() { requestChatViewportSync(); }
 function autoGrowChatInput(el) {
 el.style.setProperty('height', 'auto', 'important');
 const newHeight = Math.min(el.scrollHeight, 98);
@@ -290,8 +262,6 @@ currentChatTeamId = null;
 chatEditingMessageId = null;
 chatReplyTo = null;
 __chatKBLast = -1;
-__vvMaxH = 0;
-__kbOpen = false;
 const pageEl = document.getElementById('page-team-chat');
 if (pageEl) { pageEl.style.removeProperty('height'); pageEl.style.removeProperty('top'); }
 renderTeamsList();
