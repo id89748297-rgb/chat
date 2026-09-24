@@ -228,10 +228,14 @@ window.visualViewport.addEventListener('scroll', requestChatViewportSync);
 }
 let __chatKBLast = -1;
 let __vvRafPending = false;
-// Непрерывная синхронизация вместо порога "клавиатура открыта/закрыта" с задержками:
-// на КАЖДОЕ событие visualViewport (а их много за время анимации клавиатуры)
-// подгоняем top/height страницы под текущие vv.offsetTop/vv.height.
-// Шапка едет вместе с клавиатурой плавно, а не прыгает постфактум.
+// ВАЖНО: здесь мы больше НЕ трогаем page.style.top/height руками.
+// На iPhone в режиме standalone PWA (WKWebView) любая попытка JS подстроить
+// позицию/высоту страницы под клавиатуру гарантированно опаздывает на кадр-два
+// относительно нативной анимации системы — отсюда видимый рывок шапки.
+// Вместо борьбы со встроенным поведением просто доверяем его браузеру:
+// .chat-page-header теперь position:sticky и едет вместе с обычным скроллом/
+// сжатием документа, которое делает сам WKWebView/interactive-widget=resizes-content.
+// Тут только пересчитываем факт "открыта клавиатура" (для стилей) и держим низ списка.
 function requestChatViewportSync() {
 if (__vvRafPending) return;
 __vvRafPending = true;
@@ -242,11 +246,9 @@ __vvRafPending = false;
 const page = document.getElementById('page-team-chat');
 if (!page || !page.classList.contains('active') || !window.visualViewport) return;
 const vv = window.visualViewport;
-const top = Math.round(vv.offsetTop);
 const h = Math.round(vv.height);
-page.style.setProperty('top', top + 'px', 'important');
-page.style.setProperty('height', h + 'px', 'important');
-document.getElementById('chat-input-bar').classList.toggle('kb-open', (window.innerHeight - h - top) > 100);
+const kbOpen = (window.innerHeight - h) > 100;
+document.getElementById('chat-input-bar').classList.toggle('kb-open', kbOpen);
 if (h !== __chatKBLast) { __chatKBLast = h; scrollChatToBottom(); }
 }
 // Оставляем старое имя как алиас — на него ссылаются другие места кода.
