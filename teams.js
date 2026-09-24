@@ -2,6 +2,7 @@
 
 let chatReplyTo = null; // текущий ответ (реплай): { id, name, text }
 const CHAT_EDIT_WINDOW_MS = 48 * 60 * 60 * 1000; // окно редактирования — 48 часов, как в Telegram
+let chatPendingMsgs = {}; // черновики отправки: [teamId] = [{...Сообщение, __pending/__failed}] — живут отдельно от кэша
 
 function saveTeamsLocal() {
 try { localStorage.setItem('clc_teams', JSON.stringify(teams)); } catch (e) {}
@@ -310,7 +311,7 @@ if (list) list.scrollTop = list.scrollHeight;
 function msgTs(m) { return m.createdAt || m.clientCreatedAt || 0; }
 // Повтор отправки зависшего сообщения (клик по ⚠)
 async function retryChatMessage(teamId, tempId) {
-const msgs = chatMessagesCache[teamId] || [];
+const msgs = chatPendingMsgs[teamId] || [];
 const m = msgs.find(x => x.id === tempId);
 if (!m || !m.__failed || !db || !currentUser) return;
 m.__failed = false; m.__pending = true;
@@ -360,15 +361,17 @@ const fresh = [];
 snap.forEach(doc => fresh.push({ id: doc.id, ...doc.data() }));
 fresh.reverse();
 const freshIds = new Set(fresh.map(m => m.id));
+// Черновик отправки убираем ТОЛЬКО когда сервер реально прислал документ.
+// Считаем совпадения по количеству: два одинаковых «тест» не съедают друг друга.
+const pend = chatPendingMsgs[teamId] || [];
+for (const f of fresh) {
+const idx = pend.findIndex(p => !p.__failed && !p.__matched && p.senderId === f.senderId && p.text === f.text);
+if (idx >= 0) pend.splice(idx, 1);
+}
 // Не сбрасываем догруженную историю: старше самой старой из «свежих» оставляем в кэше
 const oldestFreshTs = fresh.length ? msgTs(fresh[0]) : Infinity;
 const prev = chatMessagesCache[teamId] || [];
-// Темповое сообщение убираем, когда реальное дошло от сервера (тот же отправитель и текст)
-const tempMatches = t => fresh.some(m => m.senderId === t.senderId && m.text === t.text && !m.deleted);
-const kept = prev.filter(m =>
-((m.__pending || m.__failed) && !tempMatches(m)) ||
-(!(m.__pending || m.__failed) && !freshIds.has(m.id) && msgTs(m) < oldestFreshTs)
-);
+const kept = prev.filter(m => !freshIds.has(m.id) && msgTs(m) < oldestFreshTs);
 chatMessagesCache[teamId] = kept.concat(fresh).sort((a, b) => msgTs(a) - msgTs(b));
 if (currentChatTeamId === teamId) {
 const list = document.getElementById('chat-messages-list');
@@ -428,7 +431,8 @@ return `${d.getDate()} ${months[d.getMonth()]}${d.getFullYear() !== now.getFullY
 function renderChatMessages(teamId) {
 const list = document.getElementById('chat-messages-list');
 if (!list) return;
-const msgs = chatMessagesCache[teamId] || [];
+// Показываем сообщения из базы + черновики отправки (🕘/⚠) поверх них
+const msgs = (chatMessagesCache[teamId] || []).concat(chatPendingMsgs[teamId] || []);
 const roles = teamRolesCache[teamId] || {};
 const reads = chatReadsCache[teamId] || {};
 let lastDayKey = null;
@@ -673,7 +677,8 @@ if (chatReplyTo) localMsg.replyTo = chatReplyTo;
 const mentionUids = extractMentionUids(text);
 if (mentionUids.length) localMsg.mentions = mentionUids;
 if (!chatMessagesCache[teamId]) chatMessagesCache[teamId] = [];
-chatMessagesCache[teamId].push(localMsg);
+if (!chatPendingMsgs[teamId]) chatPendingMsgs[teamId] = [];
+chatPendingMsgs[teamId].push(localMsg);
 renderChatMessages(teamId);
 scrollChatToBottom();
 const msgData = { text, senderId: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), clientCreatedAt: Date.now() };
@@ -684,7 +689,7 @@ await db.collection('teamRegistry').doc(teamId).collection('chat').add(msgData);
 } catch (sendErr) {
 // Сервер не принял: помечаем ⚠ — клик по значку повторит отправку
 console.error('Не удалось отправить сообщение:', sendErr);
-const still = (chatMessagesCache[teamId] || []).find(m => m.id === tempId);
+const still = (chatPendingMsgs[teamId] || []).find(m => m.id === tempId);
 if (still) { still.__pending = false; still.__failed = true; renderChatMessages(teamId); }
 showToast('⚠ Сообщение не отправлено — нажмите ⚠ для повтора', 'error');
 return;
