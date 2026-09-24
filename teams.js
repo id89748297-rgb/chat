@@ -306,9 +306,16 @@ function scrollChatToBottom() {
 const list = document.getElementById('chat-messages-list');
 if (list) list.scrollTop = list.scrollHeight;
 }
-// Эффективное время сообщения: serverTimestamp на мгновение даёт null в снапшоте,
-// тогда используем клиентское время, записанное при отправке
-function msgTs(m) { return m.createdAt || m.clientCreatedAt || 0; }
+// Эффективное время сообщения в мс. createdAt может быть: числом (старые записи),
+// объектом Firestore Timestamp (serverTimestamp) или null (сервер ещё не ответил).
+function tsToMs(v) {
+if (!v) return 0;
+if (typeof v === 'number') return v;
+if (typeof v.toMillis === 'function') return v.toMillis(); // Firestore Timestamp
+if (v.seconds !== undefined) return v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
+return 0;
+}
+function msgTs(m) { return tsToMs(m.createdAt) || m.clientCreatedAt || 0; }
 // Повтор отправки зависшего сообщения (клик по ⚠)
 async function retryChatMessage(teamId, tempId) {
 const msgs = chatPendingMsgs[teamId] || [];
