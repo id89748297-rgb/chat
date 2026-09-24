@@ -285,8 +285,10 @@ const layoutShrunk = (__vvMaxH - window.innerHeight) > 150;
 if (kbOpen && !layoutShrunk) {
 __kbOpen = true;
 try { localStorage.setItem('clc_kb_height', String(kb)); } catch {}
+// Шапка всегда прижата к верху: смещение vv.offsetTop не применяем —
+// в момент открытия клавиатуры браузер на миг прокручивает страницу вниз,
+// и использование offsetTop опускало шапку, а затем она резко вскакивала.
 page.style.setProperty('height', vh + 'px', 'important');
-page.style.setProperty('top', vv.offsetTop + 'px', 'important');
 window.scrollTo(0, 0);
 } else {
 __kbOpen = false;
