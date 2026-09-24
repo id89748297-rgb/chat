@@ -96,6 +96,8 @@ document.body.style.top = '0px';
 document.body.style.left = '0';
 document.body.style.right = '0';
 document.body.style.width = '100%';
+// И <html> запрещаем скролл — документу физически нечем двигаться при фокусе на поле
+document.documentElement.style.overflow = 'hidden';
 }
 function unlockBodyScroll() {
 document.body.style.position = '';
@@ -103,6 +105,7 @@ document.body.style.top = '';
 document.body.style.left = '';
 document.body.style.right = '';
 document.body.style.width = '';
+document.documentElement.style.overflow = '';
 window.scrollTo(0, window.__bodyScrollY || 0);
 }
 
@@ -219,11 +222,19 @@ page.style.removeProperty('top');
 ['pointerdown', 'touchstart'].forEach(ev => {
 input.addEventListener(ev, preshrink, { passive: true });
 });
-// Конец тапа: ручной фокус-страховка (без preventDefault — жест «настоящий»)
+// Запрет нативного scroll-into-view: на касании поле «замораживается» (readonly),
+// браузер не скроллит документ к фокусу; фокус ставим сами после своих коррекций.
+input.addEventListener('touchstart', () => {
+if (chatActive()) input.setAttribute('readonly', 'readonly');
+}, { passive: true });
 input.addEventListener('touchend', () => {
 if (!chatActive()) return;
 window.scrollTo(0, 0);
+setTimeout(() => {
+if (!chatActive()) return;
+input.removeAttribute('readonly');
 input.focus();
+}, 0);
 }, false);
 input.addEventListener('focusin', () => {
 if (chatActive()) window.scrollTo(0, 0);
@@ -231,10 +242,10 @@ if (chatActive()) window.scrollTo(0, 0);
 window.addEventListener('scroll', () => {
 if (chatActive() && window.scrollY !== 0) window.scrollTo(0, 0);
 }, true);
+// Одного вызова достаточно: дальше visualViewport.resize сам позовёт коррекцию,
+// когда клавиатура реально появится (повторы на 100/300/600мс давали поздние дёргания)
 input.addEventListener('focus', () => {
-[0, 100, 300, 600].forEach(ms => setTimeout(() => {
 if (chatActive()) { window.scrollTo(0, 0); adjustChatForKeyboard(); }
-}, ms));
 });
 input.addEventListener('blur', () => setTimeout(() => {
 if (chatActive()) window.scrollTo(0, 0);
