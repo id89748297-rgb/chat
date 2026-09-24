@@ -271,8 +271,11 @@ const kb = __vvMaxH > 0 ? (__vvMaxH - vh) : 0;
 if (kb > 150) {
 __kbOpen = true;
 try { localStorage.setItem('clc_kb_height_v2', String(kb)); } catch {}
+// Шапку НЕ смещаем: top остаётся 0 всегда, сжимается только высота страницы (список).
+// Установка top по vv.offsetTop давала «приседание» шапки: в момент открытия клавиатуры
+// браузер на миг прокручивает документ, offsetTop становится ненулевым — шапка
+// опускалась, а при сбросе прокрутки вскакивала обратно.
 page.style.setProperty('height', vh + 'px', 'important');
-page.style.setProperty('top', vv.offsetTop + 'px', 'important');
 window.scrollTo(0, 0);
 } else {
 __kbOpen = false;
